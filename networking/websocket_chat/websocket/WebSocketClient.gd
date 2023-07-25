@@ -68,5 +68,5 @@ func poll() -> void:
 		message_received.emit(get_message())
 
 
-func _process(delta):
+func _process(_delta):
 	poll()

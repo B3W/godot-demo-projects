@@ -91,10 +91,12 @@ func _create_peer() -> WebSocketPeer:
 func poll() -> void:
 	if not tcp_server.is_listening():
 		return
+
 	while not refuse_new_connections and tcp_server.is_connection_available():
 		var conn = tcp_server.take_connection()
 		assert(conn != null)
 		pending_peers.append(PendingPeer.new(conn))
+
 	var to_remove := []
 	for p in pending_peers:
 		if not _connect_pending(p):
@@ -103,21 +105,27 @@ func poll() -> void:
 				to_remove.append(p)
 			continue # Still pending
 		to_remove.append(p)
+
 	for r in to_remove:
 		pending_peers.erase(r)
+
 	to_remove.clear()
+
 	for id in peers:
 		var p: WebSocketPeer = peers[id]
-		var packets = p.get_available_packet_count()
 		p.poll()
+
 		if p.get_ready_state() != WebSocketPeer.STATE_OPEN:
 			client_disconnected.emit(id)
 			to_remove.append(id)
 			continue
+
 		while p.get_available_packet_count():
 			message_received.emit(id, get_message(id))
+
 	for r in to_remove:
 		peers.erase(r)
+
 	to_remove.clear()
 
 
@@ -131,32 +139,40 @@ func _connect_pending(p: PendingPeer) -> bool:
 			peers[id] = p.ws
 			client_connected.emit(id)
 			return true # Success.
+
 		elif state != WebSocketPeer.STATE_CONNECTING:
 			return true # Failure.
+
 		return false # Still connecting.
+
 	elif p.tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		return true # TCP disconnected.
+
 	elif not use_tls:
 		# TCP is ready, create WS peer
 		p.ws = _create_peer()
 		p.ws.accept_stream(p.tcp)
 		return false # WebSocketPeer connection is pending.
+
 	else:
 		if p.connection == p.tcp:
 			assert(tls_key != null and tls_cert != null)
 			var tls = StreamPeerTLS.new()
 			tls.accept_stream(p.tcp, TLSOptions.server(tls_key, tls_cert))
 			p.connection = tls
+
 		p.connection.poll()
 		var status = p.connection.get_status()
 		if status == StreamPeerTLS.STATUS_CONNECTED:
 			p.ws = _create_peer()
 			p.ws.accept_stream(p.connection)
 			return false # WebSocketPeer connection is pending.
+
 		if status != StreamPeerTLS.STATUS_HANDSHAKING:
 			return true # Failure.
+
 		return false
 
 
-func _process(delta):
+func _process(_delta):
 	poll()
